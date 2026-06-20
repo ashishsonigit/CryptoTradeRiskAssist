@@ -84,6 +84,7 @@ def _apply_symbol_defaults(state, base_symbol: str, price: float):
 
     state["tp_stop"] = float(stop)
     state["tp_exit"] = float(exit_price)
+    state["tp_exit_sync_key"] = f"{base_symbol}|{state['tp_direction']}|{state['tp_sl_distance']}|{state['tp_rr']}|{price}"
 
 
 def fetch_symbol_price(base_symbol: str):
@@ -251,7 +252,10 @@ def render_trade_planning():
             exit_live = entry_live - (stop_live - entry_live) * float(default_rr)
         state["tp_entry"] = float(entry_live)
         state["tp_stop"] = float(stop_live)
-        state["tp_exit"] = float(exit_live)
+        exit_sync_key = f"{selected_symbol}|{direction_live}|{default_sl_distance}|{default_rr}|{entry_live}"
+        if state.get("tp_exit_sync_key") != exit_sync_key or "tp_exit" not in state:
+            state["tp_exit"] = float(exit_live)
+            state["tp_exit_sync_key"] = exit_sync_key
 
     st.markdown("---")
 
@@ -260,7 +264,7 @@ def render_trade_planning():
     # ---------------------------------------------------------
     st.subheader("Plan Trade")
 
-    col1, col2, col3, col4, col5 = st.columns(5)
+    col1, col2, col3, col4 = st.columns(4)
 
     with col1:
         symbol = st.text_input(
@@ -290,15 +294,12 @@ def render_trade_planning():
             disabled=True,
         )
 
-    with col5:
-        rr = st.number_input("RR", value=float(default_rr), disabled=not symbol_ready)
-
-    if direction == "Long":
-        calculated_exit = entry + (entry - stop_price) * rr
-    else:
-        calculated_exit = entry - (stop_price - entry) * rr
-
-    exit_price = st.number_input("Exit Price", value=float(calculated_exit), disabled=True)
+    exit_price = st.number_input(
+        "Exit Price",
+        value=float(state.get("tp_exit", 0.0)) if symbol_ready else 0.0,
+        key="tp_exit",
+        disabled=not symbol_ready,
+    )
     plan_trade = st.button("Plan", disabled=not symbol_ready)
 
     # ---------------------------------------------------------
@@ -306,6 +307,8 @@ def render_trade_planning():
     # ---------------------------------------------------------
     if plan_trade and symbol_ready:
         sl_distance = abs(entry - stop_price)
+        reward_distance = abs(exit_price - entry)
+        rr = reward_distance / sl_distance if sl_distance > 0 else 0.0
         risk_pct = default_risk_pct / 100
 
         risk_amount = current_balance * risk_pct
