@@ -13,21 +13,53 @@ class MarketConfig:
 def compute_market_layer(snapshot: dict, cfg: MarketConfig):
     """
     Computes the 4‑pillar Market Layer:
-    - Price Structure & Volatility
+    - Price Structure & Volatility  (includes Regime sub-score)
     - Macro & Cross‑Asset
     - Positioning & Flow
     - Sentiment & Narrative
     """
 
     # -----------------------------
-    # PRICE STRUCTURE & VOLATILITY
+    # MARKET REGIME SUB-SCORE
+    # Combines EMA slope, ADX strength, and HH/HL structure quality.
+    # Trending (>70) / Ranging (40-70) / Choppy (<40)
     # -----------------------------
-    price_score = (
-        snapshot.get("regime_ema_slope_score", 50) * 0.40 +
-        snapshot.get("regime_compression_score", 50) * 0.30 +
-        snapshot.get("btc_structure_hh_hl", True) * 30 +
-        snapshot.get("btc_atr_current", 1) / max(snapshot.get("btc_atr_30d", 1), 1) * 10
+    ema_slope  = float(snapshot.get("regime_ema_slope_score", 50))
+    adx_score  = float(snapshot.get("regime_adx_score", 50))
+    structure  = float(snapshot.get("regime_structure_score", 50))   # 80 if HH/HL intact, else 40
+    compression = float(snapshot.get("regime_compression_score", 50))
+
+    regime_score = (
+        ema_slope   * 0.35 +
+        adx_score   * 0.30 +
+        structure   * 0.20 +
+        compression * 0.15
     )
+    regime_score = max(0.0, min(100.0, regime_score))
+
+    if regime_score >= 68:
+        regime_label = "Trending — Strategy fit high"
+    elif regime_score >= 42:
+        regime_label = "Ranging — Suitable for mean reversion"
+    else:
+        regime_label = "Choppy — Avoid aggressive entries"
+
+    # -----------------------------
+    # PRICE STRUCTURE & VOLATILITY
+    # Price Trend Score  = EMA slope (0-100)
+    # Volatility Score   = blend of ATR ratio and Bollinger compression (0-100)
+    # Regime Score       = already computed above (0-100)
+    # -----------------------------
+    atr_ratio      = float(snapshot.get("btc_atr_current", 1)) / max(float(snapshot.get("btc_atr_30d", 1)), 1)
+    atr_normalized = max(0.0, min(100.0, atr_ratio * 50.0))   # 1.0 ratio → 50, 2.0 → 100, 0.5 → 25
+    volatility_score = max(0.0, min(100.0, atr_normalized * 0.50 + compression * 0.50))
+
+    price_score = (
+        ema_slope        * 0.40 +
+        volatility_score * 0.30 +
+        regime_score     * 0.30
+    )
+    price_score = max(0.0, min(100.0, price_score))
 
     # -----------------------------
     # MACRO & CROSS‑ASSET
@@ -77,9 +109,12 @@ def compute_market_layer(snapshot: dict, cfg: MarketConfig):
 
     return {
         "price_score": price_score,
+        "volatility_score": volatility_score,
         "macro_score": macro_score,
         "flow_score": flow_score,
         "sentiment_score": sentiment_score,
+        "regime_score": regime_score,
+        "regime_label": regime_label,
         "M_score": M_score,
         "market_risk_mode": (
             "Strong Risk‑On" if M_score >= 80 else

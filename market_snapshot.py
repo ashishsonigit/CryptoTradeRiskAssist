@@ -461,3 +461,79 @@ def update_market_snapshot(force: bool = False):
 
 def schedule_market_updates():
     update_market_snapshot(force=False)
+
+
+# ======================================================
+#  4H SCORE HISTORY (last N days, price-based scores)
+# ======================================================
+
+def build_score_history_4h(days: int = 30) -> list:
+    """
+    Fetches Binance BTCUSDT 4H candles and computes rolling price-based
+    scores (trend, volatility, regime, price_score) for each candle.
+    Macro/flow/sentiment are point-in-time and cannot be reconstructed
+    historically, so they are excluded from this history.
+
+    Returns a list of dicts with keys:
+      ts_ms, datetime, price_score, regime_score, trend_score,
+      volatility_score, adx_score, compression, structure
+    """
+    candles_needed = days * 6 + 100   # 6 x 4H candles per day + warm-up
+    limit = min(1000, candles_needed)
+
+    try:
+        raw = fetch_binance_ohlcv(symbol="BTCUSDT", interval="4h", limit=limit)
+    except Exception:
+        return []
+
+    if len(raw) < 60:
+        return []
+
+    warmup = 60
+    target = days * 6
+    result = []
+
+    for i in range(warmup, len(raw)):
+        window = raw[: i + 1]
+        closes = [c[3] for c in window]
+        ts_ms = window[-1][0]
+        ts_dt = dt.datetime.utcfromtimestamp(ts_ms / 1000)
+
+        ema20_val = ema(closes, 20)
+        ema50_val = ema(closes, 50)
+        atr_cur   = atr(window, 14) or 1.0
+        # 30-day baseline ATR: use prior 180 4H candles (≈30 days)
+        atr_base  = atr(window[-180:] if len(window) >= 180 else window, 14) or atr_cur
+        adx_val   = adx(window, 14)
+        bbw       = bollinger_bandwidth(closes, 20, 2)
+        struct_ok = detect_structure(window, 3)
+
+        trend_sc   = ema_slope_score(ema20_val, ema50_val)
+        adx_sc     = _clamp((adx_val or 20.0) * 3.0, 0.0, 100.0)
+        struct_sc  = 80.0 if struct_ok else 40.0
+        comp_sc    = (80.0 if bbw is not None and bbw < 2
+                      else 60.0 if bbw is not None and bbw < 5
+                      else 40.0)
+
+        regime_sc = _clamp(
+            trend_sc * 0.35 + adx_sc * 0.30 + struct_sc * 0.20 + comp_sc * 0.15,
+            0.0, 100.0,
+        )
+
+        atr_norm      = _clamp((atr_cur / max(atr_base, 1.0)) * 50.0, 0.0, 100.0)
+        volatility_sc = _clamp(atr_norm * 0.50 + comp_sc * 0.50, 0.0, 100.0)
+        price_sc      = _clamp(trend_sc * 0.40 + volatility_sc * 0.30 + regime_sc * 0.30, 0.0, 100.0)
+
+        result.append({
+            "ts_ms":            ts_ms,
+            "datetime":         ts_dt,
+            "price_score":      round(price_sc, 2),
+            "regime_score":     round(regime_sc, 2),
+            "trend_score":      round(trend_sc, 2),
+            "volatility_score": round(volatility_sc, 2),
+            "adx_score":        round(adx_sc, 2),
+            "compression":      round(comp_sc, 2),
+            "structure":        round(struct_sc, 2),
+        })
+
+    return result[-target:] if len(result) >= target else result

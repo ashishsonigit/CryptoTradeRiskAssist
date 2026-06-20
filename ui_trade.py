@@ -3,6 +3,7 @@ import streamlit as st
 import datetime
 import requests
 import pandas as pd
+import altair as alt
 
 from storage import load_trades, save_trade
 from risk_engine import compute_risk_and_perf
@@ -53,6 +54,88 @@ def render_trade_planning():
     fetched_price = st.session_state["fetched_price"]
 
     st.write(f"**Current BTC Price:** {fetched_price}")
+
+    # ---------------------------------------------------------
+    # MAIN PAGE: RISK % VS TRADES + UNDERLYING METRICS
+    # ---------------------------------------------------------
+    if trades:
+        hist_df = pd.DataFrame(trades).reset_index(drop=True)
+        hist_df["trade_index"] = range(1, len(hist_df) + 1)
+
+        for col in ["risk_pct", "recommended_risk_pct", "P_score", "M_score"]:
+            if col in hist_df:
+                hist_df[col] = pd.to_numeric(hist_df[col], errors="coerce")
+
+        # Backward compatibility for older records.
+        if "risk_pct" not in hist_df:
+            hist_df["risk_pct"] = pd.NA
+        if "recommended_risk_pct" not in hist_df:
+            hist_df["recommended_risk_pct"] = pd.NA
+        if "P_score" not in hist_df:
+            hist_df["P_score"] = pd.NA
+        if "M_score" not in hist_df:
+            hist_df["M_score"] = pd.NA
+
+        st.subheader("Risk % vs Trades (Main)")
+
+        # --- Risk % series (left y-axis) ---
+        risk_lines = (
+            alt.Chart(hist_df)
+            .transform_fold(
+                ["risk_pct", "recommended_risk_pct"],
+                as_=["series", "value"],
+            )
+            .mark_line(point=True)
+            .encode(
+                x=alt.X("trade_index:Q", title="Trade #", axis=alt.Axis(format="d", tickMinStep=1)),
+                y=alt.Y("value:Q", title="Risk %", scale=alt.Scale(domainMin=0)),
+                color=alt.Color(
+                    "series:N",
+                    title="Series",
+                    scale=alt.Scale(
+                        domain=["risk_pct", "recommended_risk_pct"],
+                        range=["#0ea5e9", "#f97316"],
+                    ),
+                ),
+                tooltip=[
+                    alt.Tooltip("trade_index:Q", title="Trade #", format="d"),
+                    "series:N",
+                    alt.Tooltip("value:Q", format=".3f"),
+                ],
+            )
+            .properties(height=260)
+        )
+
+        # --- P/M score series (right y-axis, 0-100) ---
+        score_lines = (
+            alt.Chart(hist_df)
+            .transform_fold(
+                ["P_score", "M_score"],
+                as_=["metric", "score"],
+            )
+            .mark_line(point=True, strokeDash=[4, 2])
+            .encode(
+                x=alt.X("trade_index:Q"),
+                y=alt.Y("score:Q", title="P / M Score (0–100)", scale=alt.Scale(domain=[0, 100])),
+                color=alt.Color(
+                    "metric:N",
+                    title="Series",
+                    scale=alt.Scale(domain=["P_score", "M_score"], range=["#14b8a6", "#a855f7"]),
+                ),
+                tooltip=[
+                    alt.Tooltip("trade_index:Q", title="Trade #", format="d"),
+                    "metric:N",
+                    alt.Tooltip("score:Q", format=".2f"),
+                ],
+            )
+        )
+
+        combined = alt.layer(risk_lines, score_lines).resolve_scale(y="independent").properties(
+            title="Risk % vs Trades — with underlying P & M scores (dashed)"
+        )
+
+        st.altair_chart(combined, use_container_width=True)
+        st.caption("Solid lines: realized vs recommended risk %. Dashed lines: P-score (teal) and M-score (purple) on the right axis.")
 
     st.markdown("---")
 
@@ -112,7 +195,6 @@ def render_trade_planning():
         else:
             calculated_exit = entry - (stop_price - entry) * rr
 
-        st.write("### Exit Price (Configurable)")
         exit_price = st.number_input("Exit Price", value=calculated_exit)
 
         # ---------------------------------------------------------
@@ -152,6 +234,12 @@ def render_trade_planning():
             "breakeven_distance": abs(breakeven_price - entry),
             "stop_loss_price": stop_price,
             "stop_loss_distance": abs(entry - stop_price),
+            "rr": rr,
+            "risk_pct": default_risk_pct,
+            "recommended_risk_pct": acceptable_risk_pct,
+            "P_score": risk_result.get("P_score", 50),
+            "M_score": risk_result.get("M_score", 50),
+            "market_risk_mode": market.get("market_risk_mode", "Neutral"),
             "trading_fee": fee_cost,
             "pnl": pnl_after_fee,
             "result": result,
