@@ -1,7 +1,7 @@
-# TradePlanner 3.0 - Full Application Documentation
+# TradePlanner 4.0 - Full Application Documentation
 
 ## 1. Overview
-TradePlanner 3.0 is a Streamlit-based trading decision and journaling application with five primary surfaces:
+TradePlanner 4.0 is a Streamlit-based trading decision and journaling application with five primary surfaces:
 - Trade Planner
 - Market Layer
 - Performance Layer
@@ -32,6 +32,7 @@ Primary modules:
 - `market_snapshot.py`: refreshes snapshot data from public sources and computes market features
 - `storage.py`: JSON persistence and canonical balance history utilities
 - `ai_engines.py`: explanation and journaling text generation with safe fallback behavior
+- `parameter_definitions.py`: centralized parameter and market-source definitions used to keep wording and configuration metadata consistent
 
 Storage:
 - `trade_history.json`
@@ -198,12 +199,55 @@ Configurable inputs:
 - Base Risk percent
 - Performance layer tuning inputs
 - Market block weights
+- Market Data Sources (source endpoint, enabled/disabled switch, refresh behavior, fallback mode)
 - Maintenance reset
 
 Reset behavior:
 - Clears trade history
 - Resets balance state to initial balance
 - Clears market snapshot
+
+### 11.1 Market Data Sources section
+The Settings page should expose a dedicated Market Data Sources panel where the user can view and configure each source used by the market snapshot process. For each source, show:
+- Purpose (what this source contributes)
+- Endpoint/provider
+- Data points produced
+- Refresh cadence
+- Failure fallback behavior
+- Enable/disable toggle
+
+Recommended source rows:
+- Binance ticker/klines (price, ATR baseline data)
+- Binance funding and OI endpoints (flow stress)
+- Alternative.me Fear & Greed (sentiment)
+- FRED (macro yields/inflation inputs, when keys configured)
+- AlphaVantage (cross-asset proxies, when keys configured)
+- DefiLlama stablecoins (liquidity proxy)
+
+## 11.2 Parameter Definitions (non-technical UX)
+All user-facing parameters should be documented from one centralized definitions system so the same wording appears everywhere in the app.
+
+### Suggested structure
+- Create a central dictionary keyed by parameter id (recommended in `parameter_definitions.py`).
+- Each entry should include:
+  - `label`
+  - `what_it_means`
+  - `why_it_matters`
+  - `how_computed`
+  - `data_sources`
+  - `range_or_units`
+
+### UI behavior
+- Keep labels and descriptions consistent by sourcing wording from centralized definitions.
+- Avoid icon-triggered popovers/tooltips as a required pattern.
+- When metadata is missing, render a safe default text description and continue without breaking UI.
+
+### Parameters that should have definitions at minimum
+- Initial Balance, Current Balance
+- Base Risk %, Recommended Risk %, Actual Risk %
+- P score, M score
+- SL Distance, Stop Loss Price, Exit Price, RR
+- Position size units, risk amount, drawdown, equity return
 
 ## 12. External Data and Dependencies
 Primary runtime dependencies:
@@ -326,6 +370,8 @@ flowchart LR
 
 ## 18. Data Dictionary For Non-Technical Users
 Each data point below includes meaning, purpose, and simple computation logic.
+
+This dictionary should be generated from (or aligned exactly with) the same centralized definitions registry used by the app.
 
 ### 18.1 Account and trade sizing data
 | Data Point | What It Means | Why It Exists | How It Is Computed |

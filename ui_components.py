@@ -126,7 +126,6 @@ def metric_with_explanation(label, value, tooltip, calc_text=None):
         f"""
         <div class='metric-label'>
             {label}
-            <span class='tooltip-icon' title="{tooltip}">ⓘ</span>
         </div>
         """,
         unsafe_allow_html=True,

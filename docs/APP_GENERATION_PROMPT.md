@@ -1,10 +1,10 @@
-# Prompt To Regenerate TradePlanner 3.0
+# Prompt To Regenerate TradePlanner 4.0
 
 Use this prompt in a coding model to regenerate the app from scratch.
 
 ---
 
-Build a production-style Streamlit trading application named TradePlanner 3.0 with the following architecture and behavior.
+Build a production-style Streamlit trading application named TradePlanner 4.0 with the following architecture and behavior.
 
 ## 1) Tech Stack
 - Python 3.10+
@@ -20,6 +20,7 @@ Create these modules:
 - app.py
 - storage.py
 - settings.py
+- parameter_definitions.py
 - market_snapshot.py
 - market_layer.py
 - performance_layer.py
@@ -30,6 +31,23 @@ Create these modules:
 - ui_history.py
 - ai_engines.py
 - trade_history.json
+
+`parameter_definitions.py` must contain centralized definitions and source metadata used across the app.
+
+Parameter definitions should include:
+- label
+- what_it_means
+- why_it_matters
+- how_computed
+- data_sources
+- units_or_range
+
+Market data source definitions should include:
+- source id
+- provider/endpoint
+- data points produced
+- default enabled/disabled state
+- fallback behavior notes
 
 ## 3) App Navigation
 Sidebar pages:
@@ -146,6 +164,8 @@ Show prominently:
   - stop
   - sl distance
   - default exit seed
+- Set default SL Distance to 350
+- Stop Loss Price must adjust in real time while SL Distance and direction inputs are changing
 
 ### 7.3 Plan trade section
 - include direction, entry, stop, exit
@@ -157,6 +177,8 @@ Show prominently:
 ### 7.4 Position sizing
 - risk amount = current_balance * risk_pct
 - units = risk_amount / sl_distance
+- Risk % input must be fully configurable by the user
+- Show recommended risk as a subtle hint under the Risk % field (reference only, not forced)
 
 ### 7.5 Outcome styling
 - winning trade badge in green
@@ -171,7 +193,22 @@ Include:
 - Base Risk %
 - Market pillar weight sliders
 - Performance tuning controls
+- Market Data Sources section where every market source is configurable
 - reset button that clears trades and resets state
+
+Market Data Sources section requirements:
+- list each source used by market_snapshot
+- show endpoint/provider label
+- show data points produced by source
+- enable/disable toggle per source
+- fallback behavior note when source fails
+- this section must support full configuration of all market data sources used in the app
+
+## 8.1 Parameter Definitions (Centralized, No Popovers)
+- Keep all key parameter and metric definitions in `parameter_definitions.py`.
+- Use one shared source of wording so labels and descriptions remain consistent across pages.
+- Do not use icon-triggered popovers/tooltips for these definitions.
+- If a definition is missing, render safely with a simple default text fallback (no UI failure).
 
 ## 9) Trade History Page
 Show:
@@ -198,6 +235,7 @@ Both dashboards should:
 - support backward compatibility when new fields are missing
 - avoid hard crashes on API failures, fallback gracefully
 - keep deterministic fallbacks for AI summaries
+- if parameter definition metadata is missing for a field, show a safe default text message instead of failing UI rendering
 
 ## 12) Acceptance Criteria
 The generated app is complete when:
@@ -208,6 +246,7 @@ The generated app is complete when:
 - performance score includes balance-aware metrics
 - history displays balance progression
 - no compile errors in key modules
+- no info-popover/icon dependencies in UI modules
 
 Also provide:
 - a short run guide

@@ -21,6 +21,14 @@ def _clamp(x, lo, hi):
     return max(lo, min(hi, x))
 
 
+def _source_enabled(source_key: str, default=True):
+    return bool(st.session_state.get(f"ds_{source_key}_enabled", default))
+
+
+def _source_endpoint(source_key: str, default: str):
+    return str(st.session_state.get(f"ds_{source_key}_endpoint", default))
+
+
 # ---------------- EMA (SMA-initialized) ----------------
 def ema(values, period):
     if len(values) < period:
@@ -159,7 +167,8 @@ def _zscore(vals):
 # ======================================================
 
 def fetch_binance_ohlcv(symbol="BTCUSDT", interval="1h", limit=300):
-    url = f"{BINANCE_BASE}/api/v3/klines"
+    base = _source_endpoint("binance_price", BINANCE_BASE).rstrip("/")
+    url = f"{base}/api/v3/klines"
     params = {"symbol": symbol, "interval": interval, "limit": limit}
     r = requests.get(url, params=params, timeout=10)
     r.raise_for_status()
@@ -176,6 +185,9 @@ def fetch_binance_ohlcv(symbol="BTCUSDT", interval="1h", limit=300):
 
 
 def build_price_features():
+    if not _source_enabled("binance_price", True):
+        return {}
+
     try:
         candles = fetch_binance_ohlcv()
     except Exception:
@@ -234,7 +246,8 @@ def fetch_fred_series(series_id, api_key, limit=30):
         "limit": limit,
         "sort_order": "desc",
     }
-    r = requests.get(f"{FRED_BASE}/series/observations", params=params, timeout=10)
+    base = _source_endpoint("fred", FRED_BASE).rstrip("/")
+    r = requests.get(f"{base}/series/observations", params=params, timeout=10)
     r.raise_for_status()
     data = r.json()
     obs = data.get("observations", [])
@@ -248,6 +261,9 @@ def fetch_fred_series(series_id, api_key, limit=30):
 
 
 def build_macro_features():
+    fred_enabled = _source_enabled("fred", True)
+    alpha_enabled = _source_enabled("alphavantage", True)
+
     fred_key = st.secrets.get("FRED_API_KEY", "")
     alpha_key = st.secrets.get("ALPHAVANTAGE_API_KEY", "")
 
@@ -259,7 +275,7 @@ def build_macro_features():
     events = []
 
     try:
-        if fred_key:
+        if fred_enabled and fred_key:
             yields = fetch_fred_series("DGS10", fred_key, limit=10)
             if yields:
                 us10y_current = yields[-1]
@@ -268,13 +284,13 @@ def build_macro_features():
         pass
 
     try:
-        if fred_key:
+        if fred_enabled and fred_key:
             cpi_z = 0.0
     except Exception:
         pass
 
     try:
-        if alpha_key:
+        if alpha_enabled and alpha_key:
             dxy_score = 50.0
             equities_score = 60.0
     except Exception:
@@ -295,7 +311,11 @@ def build_macro_features():
 # ======================================================
 
 def fetch_binance_funding(symbol="BTCUSDT", limit=60):
-    url = f"{BINANCE_BASE}/fapi/v1/fundingRate"
+    base = _source_endpoint("binance_funding", BINANCE_BASE).rstrip("/")
+    if base.endswith("fundingRate"):
+        url = base
+    else:
+        url = f"{base}/fapi/v1/fundingRate"
     params = {"symbol": symbol, "limit": limit}
     r = requests.get(url, params=params, timeout=10)
     r.raise_for_status()
@@ -305,7 +325,11 @@ def fetch_binance_funding(symbol="BTCUSDT", limit=60):
 
 
 def fetch_binance_oi(symbol="BTCUSDT", interval="1h", limit=60):
-    url = f"{BINANCE_BASE}/futures/data/openInterestHist"
+    base = _source_endpoint("binance_oi", BINANCE_BASE).rstrip("/")
+    if base.endswith("openInterestHist"):
+        url = base
+    else:
+        url = f"{base}/futures/data/openInterestHist"
     params = {"symbol": symbol, "period": interval, "limit": limit}
     r = requests.get(url, params=params, timeout=10)
     r.raise_for_status()
@@ -315,7 +339,11 @@ def fetch_binance_oi(symbol="BTCUSDT", interval="1h", limit=60):
 
 
 def fetch_stablecoins_total():
-    url = f"{DEFILLAMA_BASE}/stablecoins"
+    base = _source_endpoint("defillama", DEFILLAMA_BASE).rstrip("/")
+    if base.endswith("stablecoins"):
+        url = base
+    else:
+        url = f"{base}/stablecoins"
     r = requests.get(url, timeout=10)
     r.raise_for_status()
     data = r.json()
@@ -330,31 +358,34 @@ def build_flow_features():
     stable_30d_change_pct = 0.0
 
     try:
-        vals = fetch_binance_funding()
-        funding_z = _zscore(vals)
+        if _source_enabled("binance_funding", True):
+            vals = fetch_binance_funding()
+            funding_z = _zscore(vals)
     except Exception:
         pass
 
     try:
-        vals = fetch_binance_oi()
-        oi_z = _zscore(vals)
+        if _source_enabled("binance_oi", True):
+            vals = fetch_binance_oi()
+            oi_z = _zscore(vals)
     except Exception:
         pass
 
     try:
-        now = dt.datetime.utcnow().timestamp()
-        total = fetch_stablecoins_total()
-        hist = st.session_state.get("stable_hist", [])
-        hist.append((now, total))
-        hist = hist[-60:]
-        st.session_state["stable_hist"] = hist
+        if _source_enabled("defillama", True):
+            now = dt.datetime.utcnow().timestamp()
+            total = fetch_stablecoins_total()
+            hist = st.session_state.get("stable_hist", [])
+            hist.append((now, total))
+            hist = hist[-60:]
+            st.session_state["stable_hist"] = hist
 
-        if len(hist) >= 2:
-            first_t, first_v = hist[0]
-            last_t, last_v = hist[-1]
-            days = (last_t - first_t) / 86400
-            if days >= 20:
-                stable_30d_change_pct = (last_v - first_v) / first_v * 100 if first_v > 0 else 0.0
+            if len(hist) >= 2:
+                first_t, first_v = hist[0]
+                last_t, last_v = hist[-1]
+                days = (last_t - first_t) / 86400
+                if days >= 20:
+                    stable_30d_change_pct = (last_v - first_v) / first_v * 100 if first_v > 0 else 0.0
     except Exception:
         pass
 
@@ -375,11 +406,13 @@ def build_sentiment_features():
     headline_sentiment = 0.0
 
     try:
-        r = requests.get(FEAR_GREED_URL, params={"limit": 1, "format": "json"}, timeout=10)
-        if r.ok:
-            data = r.json()
-            v = data.get("data", [{}])[0].get("value", "50")
-            fear_greed = float(v)
+        if _source_enabled("fear_greed", True):
+            url = _source_endpoint("fear_greed", FEAR_GREED_URL)
+            r = requests.get(url, params={"limit": 1, "format": "json"}, timeout=10)
+            if r.ok:
+                data = r.json()
+                v = data.get("data", [{}])[0].get("value", "50")
+                fear_greed = float(v)
     except Exception:
         pass
 
@@ -423,14 +456,12 @@ DEFAULT_SNAPSHOT = {
 #  SNAPSHOT UPDATE (HYBRID, 15 MIN)
 # ======================================================
 
-REFRESH_SECONDS = 15 * 60  # 15 minutes
-
-
 def update_market_snapshot(force: bool = False):
     now = time.time()
+    refresh_seconds = int(float(st.session_state.get("ds_refresh_minutes", 15)) * 60)
     last_ts = st.session_state.get("market_snapshot_ts", 0)
 
-    if not force and (now - last_ts) < REFRESH_SECONDS and "market_snapshot" in st.session_state:
+    if not force and (now - last_ts) < refresh_seconds and "market_snapshot" in st.session_state:
         return
 
     snapshot = DEFAULT_SNAPSHOT.copy()

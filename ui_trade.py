@@ -235,6 +235,7 @@ def render_trade_planning():
             key="tp_base_risk_pct",
             disabled=not symbol_ready,
         )
+        st.caption(f"Recommended: {acceptable_risk_pct:.2f}%")
 
     if symbol_ready:
         st.write(f"Current Price: {float(state.get('tp_current_price', 0.0)):.4f}")
@@ -309,10 +310,12 @@ def render_trade_planning():
         sl_distance = abs(entry - stop_price)
         reward_distance = abs(exit_price - entry)
         rr = reward_distance / sl_distance if sl_distance > 0 else 0.0
+        st.session_state["tp_last_rr"] = rr
         risk_pct = default_risk_pct / 100
 
         risk_amount = current_balance * risk_pct
         units = risk_amount / sl_distance if sl_distance > 0 else 0
+        st.session_state["tp_last_units"] = units
 
         fee_rate = default_fee / 100
         fee_cost = units * entry * fee_rate

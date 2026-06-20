@@ -1,6 +1,7 @@
 # ================= settings.py =================
 import streamlit as st
 
+from parameter_definitions import MARKET_DATA_SOURCES
 from storage import get_current_balance, load_trades, reset_performance_history
 
 
@@ -14,6 +15,7 @@ def render_settings():
         value=float(st.session_state.get("initial_balance", 10000.0)),
         step=100.0,
     )
+
     st.session_state["balance"] = get_current_balance(load_trades(), st.session_state["initial_balance"])
     st.metric("Current Balance", f"${st.session_state['balance']:,.2f}")
 
@@ -127,6 +129,40 @@ def render_settings():
         1.0,
         float(st.session_state.get("m_w_sentiment", 0.15)),
     )
+
+    st.markdown("---")
+
+    # ---------------------------------------------------------
+    # MARKET DATA SOURCES
+    # ---------------------------------------------------------
+    st.subheader("Market Data Sources")
+    st.caption("Configure each source endpoint, availability switch, and fallback context used by market snapshot computations.")
+
+    st.session_state["ds_refresh_minutes"] = st.number_input(
+        "Snapshot Refresh Interval (minutes)",
+        min_value=1,
+        max_value=240,
+        value=int(st.session_state.get("ds_refresh_minutes", 15)),
+        step=1,
+    )
+
+    for source_key, meta in MARKET_DATA_SOURCES.items():
+        title = meta.get("label", source_key)
+        with st.expander(title, expanded=False):
+            st.session_state[f"ds_{source_key}_enabled"] = st.toggle(
+                "Enabled",
+                value=bool(st.session_state.get(f"ds_{source_key}_enabled", True)),
+                key=f"cfg_{source_key}_enabled",
+            )
+
+            st.session_state[f"ds_{source_key}_endpoint"] = st.text_input(
+                "Endpoint / Provider",
+                value=str(st.session_state.get(f"ds_{source_key}_endpoint", meta.get("endpoint_default", ""))),
+                key=f"cfg_{source_key}_endpoint",
+            )
+
+            st.write(f"**Data Points:** {meta.get('data_points', 'N/A')}")
+            st.write(f"**Fallback:** {meta.get('fallback', 'N/A')}")
 
     st.markdown("---")
 
