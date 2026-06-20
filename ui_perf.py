@@ -41,9 +41,17 @@ def _safe_float(x, default=0.0):
 def _state(score):
     if score >= 70:
         return "GOOD", "state-good"
-    if score >= 45:
+    if score >= 50:
         return "NEUTRAL", "state-neutral"
     return "POOR", "state-poor"
+
+
+def _score_color(score):
+    if score >= 70:
+        return "#16a34a"
+    if score >= 50:
+        return "#d97706"
+    return "#dc2626"
 
 
 def _compute_loss_streak(results):
@@ -77,7 +85,7 @@ def _prepare_perf_4h():
     if df.empty:
         return pd.DataFrame(), df
 
-    num_cols = ["pnl", "units", "stop_loss_distance", "rr", "risk_pct", "pnl_r", "M_score"]
+    num_cols = ["pnl", "units", "stop_loss_distance", "rr", "risk_pct", "pnl_r", "M_score", "balance_before", "balance_after", "cumulative_pnl", "drawdown_pct"]
     for c in num_cols:
         if c in df.columns:
             df[c] = pd.to_numeric(df[c], errors="coerce")
@@ -85,6 +93,15 @@ def _prepare_perf_4h():
     if "pnl_r" not in df.columns and {"pnl", "units", "stop_loss_distance"}.issubset(df.columns):
         risk_notional = df["units"] * df["stop_loss_distance"]
         df["pnl_r"] = np.where(risk_notional > 0, df["pnl"] / risk_notional, np.nan)
+
+    initial_balance = float(df.get("initial_balance", pd.Series([10000.0])).dropna().iloc[0]) if not df.empty else 10000.0
+    if "balance_before" not in df.columns or df["balance_before"].isna().all():
+        df["balance_before"] = initial_balance + df["pnl"].fillna(0).cumsum().shift(fill_value=0)
+    if "balance_after" not in df.columns or df["balance_after"].isna().all():
+        df["balance_after"] = df["balance_before"] + df["pnl"].fillna(0)
+    if "drawdown_pct" not in df.columns or df["drawdown_pct"].isna().all():
+        peak_balance = df["balance_after"].cummax().clip(lower=initial_balance)
+        df["drawdown_pct"] = np.where(peak_balance > 0, ((peak_balance - df["balance_after"]) / peak_balance) * 100.0, 0.0)
 
     if "rr" in df.columns:
         rr_num = pd.to_numeric(df["rr"], errors="coerce")
@@ -119,6 +136,8 @@ def _prepare_perf_4h():
             rr_viol=("rr_violation", "sum"),
             risk_viol=("risk_violation", "sum"),
             m_score=("M_score", "mean"),
+            balance_last=("balance_after", "last"),
+            drawdown_last=("drawdown_pct", "last"),
         )
         .reset_index()
     )
@@ -576,7 +595,7 @@ def _build_runtime_tree():
 
     from performance_layer import compute_performance_layer
 
-    overall_perf = compute_performance_layer(trades_df)
+    overall_perf = compute_performance_layer(trades_df, initial_balance=float(st.session_state.get("initial_balance", 10000.0)))
     root = _build_perf_tree(df4h, overall_perf=overall_perf)
     index = {}
     _flatten(root, index)
@@ -656,7 +675,8 @@ def render_performance_dashboard(show_embedded_nav: bool = True):
 
         m1, m2, m3, m4 = st.columns([0.30, 0.24, 0.24, 0.22])
         with m1:
-            st.markdown(f"<div class='metric-score'>{score:.1f}</div>", unsafe_allow_html=True)
+            score_color = _score_color(score)
+            st.markdown(f"<div class='metric-score' style='color:{score_color};'>{score:.1f}</div>", unsafe_allow_html=True)
         with m2:
             st.metric("Change (last 4H)", f"{chg_4h:+.2f}")
         with m3:
@@ -684,8 +704,8 @@ def render_performance_dashboard(show_embedded_nav: bool = True):
         st.write("**Interpretation Table**")
         table_rows = [
             ("70-100", "Good", "Scale selectively; maintain process discipline."),
-            ("45-69", "Neutral", "Trade smaller; wait for stronger confirmation."),
-            ("0-44", "Poor", "De-risk and prioritize recovery protocol."),
+            ("50-69", "Neutral", "Trade smaller; wait for stronger confirmation."),
+            ("0-49", "Poor", "De-risk and prioritize recovery protocol."),
         ]
         st.dataframe(pd.DataFrame(table_rows, columns=["Score Range", "Meaning", "Trading Implication"]), use_container_width=True, hide_index=True)
 

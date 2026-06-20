@@ -41,9 +41,17 @@ def _value(snapshot: dict, key: str, default=0.0):
 def _state(score: float):
     if score >= 70:
         return "GREEN", "state-green"
-    if score >= 45:
+    if score >= 50:
         return "YELLOW", "state-yellow"
     return "RED", "state-red"
+
+
+def _score_color(score: float):
+    if score >= 70:
+        return "#16a34a"
+    if score >= 50:
+        return "#d97706"
+    return "#dc2626"
 
 
 def _confidence(data_rows):
@@ -924,7 +932,8 @@ def render_market_dashboard(show_embedded_nav: bool = True):
 
         c1, c2, c3, c4 = st.columns([0.34, 0.22, 0.22, 0.22])
         with c1:
-            st.markdown(f"<div class='metric-score'>{node['score']:.1f}</div>", unsafe_allow_html=True)
+            score_color = _score_color(float(node["score"]))
+            st.markdown(f"<div class='metric-score' style='color:{score_color};'>{node['score']:.1f}</div>", unsafe_allow_html=True)
         with c2:
             st.markdown(f"<span class='state-pill {state_class}'>{state_text}</span>", unsafe_allow_html=True)
         with c3:

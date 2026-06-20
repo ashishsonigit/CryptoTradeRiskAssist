@@ -10,10 +10,19 @@ def _clamp(x, lo=0, hi=100):
     return max(lo, min(hi, x))
 
 
+def _coalesce_float(value, fallback):
+    try:
+        if pd.isna(value):
+            return float(fallback)
+        return float(value)
+    except Exception:
+        return float(fallback)
+
+
 # ---------------------------------------------------------
 # MAIN PERFORMANCE LAYER
 # ---------------------------------------------------------
-def compute_performance_layer(df):
+def compute_performance_layer(df, initial_balance=10000.0):
     if df.empty:
         return {
             "total_trades": 0,
@@ -36,6 +45,16 @@ def compute_performance_layer(df):
             "trade_quality_score": 50,
             "expectancy_r": 0,
             "expectancy_score": 50,
+            "initial_balance": float(initial_balance),
+            "current_balance": float(initial_balance),
+            "peak_balance": float(initial_balance),
+            "equity_return_pct": 0,
+            "recent_return_pct": 0,
+            "max_drawdown_pct": 0,
+            "current_drawdown_pct": 0,
+            "growth_score": 50,
+            "drawdown_score": 50,
+            "balance_efficiency_score": 50,
             "P_score": 50,
         }
 
@@ -43,6 +62,35 @@ def compute_performance_layer(df):
 
     if "pnl" in work:
         work["pnl"] = pd.to_numeric(work["pnl"], errors="coerce")
+
+    if "initial_balance" in work:
+        first_initial = pd.to_numeric(work["initial_balance"], errors="coerce").dropna()
+        if not first_initial.empty:
+            initial_balance = float(first_initial.iloc[0])
+
+    if "balance_before" in work:
+        work["balance_before"] = pd.to_numeric(work["balance_before"], errors="coerce")
+    if "balance_after" in work:
+        work["balance_after"] = pd.to_numeric(work["balance_after"], errors="coerce")
+
+    if "balance_before" not in work or work["balance_before"].isna().all():
+        work["balance_before"] = float(initial_balance) + work["pnl"].fillna(0).cumsum().shift(fill_value=0)
+
+    if "balance_after" not in work or work["balance_after"].isna().all():
+        work["balance_after"] = work["balance_before"] + work["pnl"].fillna(0)
+
+    work["cumulative_pnl"] = work["balance_after"] - float(initial_balance)
+    work["peak_balance"] = work["balance_after"].cummax().clip(lower=float(initial_balance))
+    work["drawdown_pct"] = np.where(
+        work["peak_balance"] > 0,
+        ((work["peak_balance"] - work["balance_after"]) / work["peak_balance"]) * 100.0,
+        0.0,
+    )
+    work["return_pct"] = np.where(
+        work["balance_before"] > 0,
+        (work["pnl"].fillna(0) / work["balance_before"]) * 100.0,
+        0.0,
+    )
 
     if "pnl_r" not in work and {"pnl", "units", "stop_loss_distance"}.issubset(work.columns):
         units = pd.to_numeric(work["units"], errors="coerce")
@@ -128,14 +176,30 @@ def compute_performance_layer(df):
     expectancy_score = _clamp(50 + expectancy_r * 20)
 
     # ---------------------------------------------------------
+    # BALANCE / EQUITY CURVE
+    # ---------------------------------------------------------
+    current_balance = _coalesce_float(work["balance_after"].iloc[-1], initial_balance)
+    peak_balance = _coalesce_float(work["peak_balance"].max(), initial_balance)
+    equity_return_pct = ((current_balance - float(initial_balance)) / float(initial_balance) * 100.0) if float(initial_balance) > 0 else 0.0
+    recent_return_pct = _coalesce_float(work["return_pct"].tail(10).mean(), 0.0)
+    max_drawdown_pct = _coalesce_float(work["drawdown_pct"].max(), 0.0)
+    current_drawdown_pct = _coalesce_float(work["drawdown_pct"].iloc[-1], 0.0)
+
+    growth_score = _clamp(50 + (equity_return_pct * 2.5) + (recent_return_pct * 1.5))
+    drawdown_score = _clamp(100 - (max_drawdown_pct * 4.0) - (current_drawdown_pct * 2.0))
+    balance_efficiency_score = _clamp(0.60 * growth_score + 0.40 * drawdown_score)
+
+    # ---------------------------------------------------------
     # FINAL P-SCORE
     # ---------------------------------------------------------
     P = (
-        0.25 * winrate_score +
-        0.20 * loss_streak_score +
-        0.20 * drift_score +
-        0.20 * trade_quality_score +
-        0.15 * expectancy_score
+        0.20 * winrate_score +
+        0.15 * loss_streak_score +
+        0.15 * drift_score +
+        0.15 * trade_quality_score +
+        0.15 * expectancy_score +
+        0.10 * growth_score +
+        0.10 * drawdown_score
     )
 
     return {
@@ -159,5 +223,15 @@ def compute_performance_layer(df):
         "trade_quality_score": trade_quality_score,
         "expectancy_r": expectancy_r,
         "expectancy_score": expectancy_score,
+        "initial_balance": float(initial_balance),
+        "current_balance": current_balance,
+        "peak_balance": peak_balance,
+        "equity_return_pct": equity_return_pct,
+        "recent_return_pct": recent_return_pct,
+        "max_drawdown_pct": max_drawdown_pct,
+        "current_drawdown_pct": current_drawdown_pct,
+        "growth_score": growth_score,
+        "drawdown_score": drawdown_score,
+        "balance_efficiency_score": balance_efficiency_score,
         "P_score": P,
     }

@@ -1,11 +1,23 @@
 # ================= settings.py =================
 import streamlit as st
 
-from storage import reset_performance_history
+from storage import get_current_balance, load_trades, reset_performance_history
 
 
 def render_settings():
     st.title("Settings & Configuration")
+
+    st.subheader("Account Balance")
+    st.session_state["initial_balance"] = st.number_input(
+        "Initial Balance",
+        min_value=100.0,
+        value=float(st.session_state.get("initial_balance", 10000.0)),
+        step=100.0,
+    )
+    st.session_state["balance"] = get_current_balance(load_trades(), st.session_state["initial_balance"])
+    st.metric("Current Balance", f"${st.session_state['balance']:,.2f}")
+
+    st.markdown("---")
 
     # ---------------------------------------------------------
     # RISK ENGINE TYPE
