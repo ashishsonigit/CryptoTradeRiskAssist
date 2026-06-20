@@ -337,7 +337,7 @@ def _render_tree(node):
             st.markdown("</div>", unsafe_allow_html=True)
 
 
-def _build_perf_tree(df4h):
+def _build_perf_tree(df4h, overall_perf=None):
     if df4h.empty:
         return None
 
@@ -538,23 +538,24 @@ def _build_perf_tree(df4h):
         ],
     )
 
+    root_score = _safe_float((overall_perf or {}).get("P_score", score_of("performance_score", 50.0)), 50.0)
     root = metric_node(
         "perf",
         "Performance Score",
-        "performance_score",
+        "P_score",
         "performance_score",
         None,
-        r"P=0.50\cdot Composite+0.25\cdot Execution+0.25\cdot Stability",
-        "Top-level",
+        r"P=0.25\cdot Winrate+0.20\cdot LossStreak+0.20\cdot Drift+0.20\cdot TradeQuality+0.15\cdot Expectancy",
+        "Single source of truth used by risk engine",
         [
-            "Top-level decision engine for performance health and risk posture.",
-            "Use trend and anomalies, not only absolute score, for actions.",
-            "Drill into child metrics to identify root-cause deterioration.",
+            "This is the authoritative Performance Score used by the risk engine.",
+            "Use the 4H trend chart and child nodes to understand why it changed.",
+            "Do not confuse this with derived dashboard health metrics.",
         ],
         {
-            "primary": ["Scale risk with sustained P-score improvement.", "De-risk rapidly when score + stability both deteriorate."],
-            "secondary": ["Review weakest child metric each day.", "Link strategy deployment to current stability state."],
-            "avoid": ["Overriding deteriorating performance trend.", "Reacting to single-bin noise without context."],
+            "primary": ["Scale risk only when P-score trend and sub-metrics improve together.", "Use the weakest child as the first place to intervene."],
+            "secondary": ["Recheck execution quality when P falls.", "Reduce size during negative drift or rising loss streaks."],
+            "avoid": ["Using the dashboard health score as a substitute for P.", "Ignoring a falling P even if one child is strong."],
         },
         children=[composite, execution, stability],
         breakdown=[
@@ -563,6 +564,7 @@ def _build_perf_tree(df4h):
             {"component": "Stability", "contribution": 0.25 * score_of("stability_score")},
         ],
     )
+    root["score"] = root_score
 
     return root
 
@@ -572,7 +574,10 @@ def _build_runtime_tree():
     if df4h.empty:
         return None, None, None
 
-    root = _build_perf_tree(df4h)
+    from performance_layer import compute_performance_layer
+
+    overall_perf = compute_performance_layer(trades_df)
+    root = _build_perf_tree(df4h, overall_perf=overall_perf)
     index = {}
     _flatten(root, index)
 

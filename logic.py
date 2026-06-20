@@ -89,11 +89,13 @@ def plan_trade(
         "result": result,
         "balance_after": None,  # UI updates this
         "risk_pct": final_risk_pct,
+        "actual_risk_pct": final_risk_pct,
         "breakeven_price": breakeven_price,
         "total_fee": fees,
         # Metadata for performance engine
         "baseline_risk": 1.0,
         "recommended_risk": final_risk_pct,
+        "recommended_risk_pct": final_risk_pct,
         "drawdown_adj": 1.0,
         "market_risk_mode": "Neutral",
         "market_risk_multiplier": 1.0,

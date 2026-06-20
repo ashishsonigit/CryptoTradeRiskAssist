@@ -1,10 +1,11 @@
 # ================= settings.py =================
 import streamlit as st
+
 from storage import reset_performance_history
 
 
 def render_settings():
-    st.title("⚙️ Settings & Configuration")
+    st.title("Settings & Configuration")
 
     # ---------------------------------------------------------
     # RISK ENGINE TYPE
@@ -16,7 +17,7 @@ def render_settings():
         ["Aggressive", "Moderate", "Conservative"],
         index=["Aggressive", "Moderate", "Conservative"].index(
             st.session_state.get("risk_engine_type", "Moderate")
-        )
+        ),
     )
 
     # ---------------------------------------------------------
@@ -37,7 +38,7 @@ def render_settings():
     # ---------------------------------------------------------
     # PERFORMANCE LAYER CONFIG
     # ---------------------------------------------------------
-    st.subheader("📈 Performance Layer Configuration")
+    st.subheader("Performance Layer Configuration")
 
     st.session_state["winrate_short"] = st.number_input(
         "Winrate Short Window", 5, 50, int(st.session_state.get("winrate_short", 20))
@@ -64,7 +65,7 @@ def render_settings():
         "Expectancy Sensitivity (m)", 10.0, 100.0, float(st.session_state.get("coef_m", 50.0))
     )
 
-    st.markdown("### P‑Score Weights")
+    st.markdown("### P-Score Weights")
 
     st.session_state["w_winrate"] = st.slider(
         "Winrate Weight", 0.0, 1.0, float(st.session_state.get("w_winrate", 0.25))
@@ -87,59 +88,47 @@ def render_settings():
     # ---------------------------------------------------------
     # MARKET LAYER CONFIG
     # ---------------------------------------------------------
-    st.subheader("🌍 Market Layer Configuration")
-
+    st.subheader("Market Layer Configuration")
     st.markdown("#### Block Weights")
 
     st.session_state["m_w_price"] = st.slider(
         "Price Structure & Volatility Weight",
-        0.0, 1.0,
-        float(st.session_state.get("m_w_price", 0.30))
+        0.0,
+        1.0,
+        float(st.session_state.get("m_w_price", 0.30)),
     )
     st.session_state["m_w_macro"] = st.slider(
-        "Macro & Cross‑Asset Weight",
-        0.0, 1.0,
-        float(st.session_state.get("m_w_macro", 0.30))
+        "Macro & Cross-Asset Weight",
+        0.0,
+        1.0,
+        float(st.session_state.get("m_w_macro", 0.30)),
     )
     st.session_state["m_w_flow"] = st.slider(
         "Positioning & Flow Weight",
-        0.0, 1.0,
-        float(st.session_state.get("m_w_flow", 0.25))
+        0.0,
+        1.0,
+        float(st.session_state.get("m_w_flow", 0.25)),
     )
     st.session_state["m_w_sentiment"] = st.slider(
         "Sentiment & Narrative Weight",
-        0.0, 1.0,
-        float(st.session_state.get("m_w_sentiment", 0.15))
+        0.0,
+        1.0,
+        float(st.session_state.get("m_w_sentiment", 0.15)),
     )
 
-    st.markdown("---")# ================= settings.py =================
-import streamlit as st
-from storage import reset_performance_history
+    st.markdown("---")
 
-
-def render_settings():
-    st.title("⚙️ Settings")
-
-    st.subheader("Performance History")
-
+    # ---------------------------------------------------------
+    # MAINTENANCE
+    # ---------------------------------------------------------
+    st.subheader("Maintenance")
     st.write("Reset all trades, balance, and performance metrics.")
 
-    if st.button("🗑 Reset All Performance Data"):
+    if st.button("Reset All Performance Data"):
         reset_performance_history()
         st.success("Performance history cleared.")
         st.rerun()
 
     st.markdown("---")
-
     st.subheader("About")
-    st.write("TradePlanner 3.0 — Built for precision, clarity, and speed.")
-
-
-    # ---------------------------------------------------------
-    # RESET BUTTON
-    # ---------------------------------------------------------
-    st.subheader("🧹 Maintenance")
-
-    if st.button("Reset Performance History"):
-        reset_performance_history()
-        st.success("Performance history reset.")
+    st.write("TradePlanner 3.0 - Built for precision, clarity, and speed.")

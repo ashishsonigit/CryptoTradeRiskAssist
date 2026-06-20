@@ -4,6 +4,7 @@ import streamlit as st
 
 from ai_engines import generate_market_attribute_summaries
 from market_layer import MarketConfig, compute_market_layer
+from risk_engine import build_market_config_from_state
 from market_snapshot import update_market_snapshot
 
 
@@ -843,7 +844,7 @@ def _build_runtime_tree():
     if not snapshot:
         return None, None
 
-    cfg = MarketConfig()
+    cfg = build_market_config_from_state(st.session_state)
     market = compute_market_layer(snapshot, cfg)
     summaries = generate_market_attribute_summaries(market, snapshot)
     root = _build_market_tree(snapshot, market, summaries)
